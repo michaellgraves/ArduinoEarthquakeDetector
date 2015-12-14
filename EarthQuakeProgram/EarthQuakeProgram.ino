@@ -19,7 +19,7 @@ HardwareSerial *fonaSerial = &Serial1;
 Adafruit_FONA fona = Adafruit_FONA(FONA_RST);
 
 //Assign the Chip Select signal to pin 10.
-int CS=10;
+ int8_t CS=10;
 
 //This is a list of some of the registers available on the ADXL345.
 //To learn more about these and the rest of the registers on the ADXL345, read the datasheet!
@@ -37,11 +37,11 @@ int x,y,z; //These variables will be used to hold the x,y and z axis acceleromet
 int xPrior; //prior value of x used for callibration
 const int numReadings = 50; //Number of readings for average
 const int numResults = 50; //Number of readings to write out
-int mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush and send buffer
+int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush and send buffer
 
 //# times each mode should execute
-int calibCount=1; // # times called calibrate fxn
-int writeCount=0; // # times writing to EEPROM
+int8_t calibCount=1; // # times called calibrate fxn
+int8_t writeCount=0; // # times writing to EEPROM
 
 // x values
 int xReadings[numReadings];      
@@ -53,9 +53,8 @@ int xAverage = 0;
 boolean eventCheck = false;
 
 //EEPROM Config
-int address = 0; // the current address
-byte value; //value read
-int valueInt;
+int8_t address = 0; // the current address
+int8_t valueInt; //value read
 
 //Fona variables
 uint8_t type; //Fona Type
@@ -132,7 +131,7 @@ void loop(){
 
         if (calibCount == numReadings) {mode=1;
                                        xAverage = xTotal / numReadings;   // calculate the average:
-                                       calibCount=1; //reset calibration count 
+                                       calibCount=1; //reset calibration count
                                        Serial.println("Monitoring...");}      
 
       delay(100); //short delay for callibration
@@ -140,13 +139,12 @@ void loop(){
   else if (mode ==1) {
       eventCheck = quakeEvent(getReading(), xAverage);   
       printResults();
-      
       if (eventCheck == true) {mode= 2;
                               eventCheck=false;
                               String SMSMessage="Event detected @ "; //SMS message constructed by program
                               SMSMessage= SMSMessage + getTime();
                               Serial.println(SMSMessage);                             
-                              sendSMS(SMSMessage);
+                              //sendSMS(SMSMessage);
                                   }
       delay(500);
       }
@@ -164,12 +162,12 @@ void loop(){
                                    writeCount=0;
                                    address =0;
                                    Serial.println("Finished writing");}
-      delay(500);   
+      delay(250);   
   }
   else if (mode ==3) {
        if (address == 0) {Serial.println("Transmitting");
                          }
-        valueInt = (int) EEPROM.read(address); // read a byte from the current address
+        valueInt = EEPROM.read(address); // read a byte from the current address
         Serial.print(address, DEC);
         Serial.print(":x=");
         Serial.println(valueInt, DEC);
@@ -177,14 +175,15 @@ void loop(){
         if (messageCounter <28) {dataMessage = dataMessage + valueInt + ",";
                                  messageCounter = messageCounter+1;
                                  } 
-                               else { sendSMS(dataMessage); //send data in 140 character chunks           
+                               else { 
+                                 //sendSMS(dataMessage); //send data in 140 character chunks           
                                       messageCounter = 0;
                                       dataMessage = "";
                                } 
         address = address + 1;    // advance to the next address of the EEPROM
         if (address == numResults) {mode=0;
                                     address=0;
-                                    sendSMS(dataMessage); //send remainder of data 
+                                    //sendSMS(dataMessage); //send remainder of data 
                                     Serial.println("Finished flushing");}
       delay(50);   
   }
@@ -219,7 +218,7 @@ void sendSMS (String thisMessage) {
         }
 }
 
-int getReading () {
+byte getReading () {
   //Reading 6 bytes of data starting at register DATAX0 will retrieve the x,y and z acceleration values from the ADXL345.
   //The results of the read operation will get stored to the values[] buffer.
   readRegister(DATAX0, 6, values);
@@ -230,7 +229,17 @@ int getReading () {
   y = ((int)values[3]<<8)|(int)values[2];
   //The Z value is stored in values[4] and values[5].
   z = ((int)values[5]<<8)|(int)values[4];
+
+
+  //Implement filter to keep ADXL values between int8_t range -128 to 127
+  if (x<-128) 
+        {x=-128;} 
+      else if (x>127) 
+          {x=127;}
+
+//  int8_t value = (int8_t)x;
   return x;
+  
 }
 
 void calcRollingAve (int x) {
@@ -245,7 +254,7 @@ void calcRollingAve (int x) {
 
 boolean quakeEvent(int x, int xAverage) {
   boolean check = false;
-  int delta = abs(x - xAverage);
+  int8_t delta = abs(x - xAverage);
   if (delta >10) {check = true;} 
   return check;
 }
