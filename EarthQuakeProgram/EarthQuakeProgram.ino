@@ -34,7 +34,7 @@ char DATAZ1 = 0x37;	//Z-Axis Data 1
 char values[10]; //This buffer will hold values read from the ADXL345 registers.
 
 int x,y,z; //These variables will be used to hold the x,y and z axis accelerometer values.
-int xPrior; //prior value of x used for callibration
+int zPrior; //prior value of x used for callibration
 const int numReadings = 50; //Number of readings for average
 const int numResults = 50; //Number of readings to write out
 int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush and send buffer
@@ -43,8 +43,8 @@ int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush a
 int8_t calibCount=1; // # times called calibrate fxn
 int8_t writeCount=0; // # times writing to EEPROM
 
-//average x used to determine if event occurred
-int xAverage = 0;
+//average z used to determine if event occurred
+int zAverage = 0;
 
 //event check
 boolean eventCheck = false;
@@ -79,15 +79,11 @@ void setup(){
   char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
   uint8_t imeiLen = fona.getIMEI(imei);
   if (imeiLen > 0) {
-    Serial.print("SIM card IMEI: "); Serial.println(imei);
+    Serial.print(F("SIM card IMEI: ")); Serial.println(imei);
   }
   //initialize GPRS, required to get network time
   initGPRS();
 
-//initialize x reading values to zero
-//for (int thisReading = 0; thisReading < numReadings; thisReading++)
-//   xReadings[thisReading] = 0;
-    
   //Initiate an SPI communication instance.
   SPI.begin();
   //Configure the SPI connection for the ADXL345.
@@ -108,32 +104,32 @@ void setup(){
 void loop(){
   
   if (mode==0) {
-        if (calibCount == 1) {Serial.println("Calibrate ADXL...");
-                              xPrior = getReading();}
+        if (calibCount == 1) {Serial.println(F("Calibrate ADXL..."));
+                              zPrior = getReading();}
 
-        if (quakeEvent(getReading(), xPrior)) {Serial.println("Not Stable...");
+        if (quakeEvent(getReading(), zPrior)) {Serial.println(F("Not Stable..."));
                                                calibCount=1; //reset calibration
-                                               Serial.print("x Diff:");
-                                               Serial.print(x, DEC);
+                                               Serial.print(F("z:"));
+                                               Serial.print(z, DEC);
                                                Serial.print(',');
-                                               Serial.print("x Diff:");
-                                               Serial.println(x-xPrior);
+                                               Serial.print(F("z Diff:"));
+                                               Serial.println(z-zPrior,DEC);
                                                delay(10000);}
           else {      
-                  xAverage=calcAvgAccel (getReading(),calibCount,xAverage);
+                  zAverage=calcAvgAccel (getReading(),calibCount,zAverage);
                   calibCount = calibCount+1;        
                   Serial.print(calibCount, DEC); //
-                  Serial.print(":X Value:");
-                  Serial.println(x, DEC);}
+                  Serial.print(":Z Value:");
+                  Serial.println(z, DEC);}
 
         if (calibCount == numReadings) {mode=1;
                                        calibCount=1; //reset calibration count
-                                       Serial.println("Monitoring...");}      
+                                       Serial.println(F("Monitoring..."));}      
 
       delay(100); //short delay for callibration
   }
   else if (mode ==1) {
-      eventCheck = quakeEvent(getReading(), xAverage);   
+      eventCheck = quakeEvent(getReading(), zAverage);   
       printResults();
       if (eventCheck == true) {mode= 2;
                               eventCheck=false;
@@ -146,26 +142,26 @@ void loop(){
       }
   else if (mode ==2) {
        if (writeCount == 0) {address=0;
-                             Serial.println("Write to eeprom");}
+                             Serial.println(F("Write to eeprom"));}
        EEPROM.write(address, getReading()); //write to current address
        address = address + 1;  // advance to the next address
        if (address == 512) {address = 0;} // Go back to 0 when we hit 512.
        writeCount = writeCount +1;
        Serial.print(address, DEC);
-       Serial.print(":x=");
-       Serial.println(x, DEC);
+       Serial.print(":z=");
+       Serial.println(z, DEC);
        if (writeCount == numResults) {mode=3;
                                    writeCount=0;
                                    address =0;
-                                   Serial.println("Finished writing");}
+                                   Serial.println(F("Finished"));}
       delay(250);   
   }
   else if (mode ==3) {
-       if (address == 0) {Serial.println("Transmitting");
+       if (address == 0) {Serial.println(F("Transmitting"));
                          }
         valueInt = EEPROM.read(address); // read a byte from the current address
         Serial.print(address, DEC);
-        Serial.print(":x=");
+        Serial.print(":z=");
         Serial.println(valueInt, DEC);
 
         if (messageCounter <28) {dataMessage = dataMessage + valueInt + ",";
@@ -180,7 +176,7 @@ void loop(){
         if (address == numResults) {mode=0;
                                     address=0;
                                     //sendSMS(dataMessage); //send remainder of data 
-                                    Serial.println("Finished flushing");}
+                                    Serial.println(F("Mem flushed"));}
       delay(50);   
   }
 
@@ -207,7 +203,7 @@ String getTime () {
 }
 
 void sendSMS (String thisMessage) {
-      Serial.println("Send SMS");
+      Serial.println(F("Send SMS"));
       thisMessage.toCharArray(message, 141);   
        if (!fona.sendSMS(sendto, message)) {Serial.println(F("Failed"));} 
        else {Serial.println(F("Sent!"));
@@ -228,55 +224,50 @@ byte getReading () {
 
 
   //Implement filter to keep ADXL values between int8_t range -128 to 127
-  if (x<-128) 
-        {x=-128;} 
-      else if (x>127) 
-          {x=127;}
-
-//  int8_t value = (int8_t)x;
-  return x;
-  
+  if (z<-128) 
+        {z=-128;} 
+      else if (z>127) 
+          {z=127;}
+  return z;  
 }
 
-int calcAvgAccel (int x, int index, int currAvg) {
+int calcAvgAccel (int z, int index, int currAvg) {
   int weightNew = 1/index;
   int weightOld = (1-weightNew);
-  int avg = x*weightNew+currAvg*weightOld;
+  int avg = z*weightNew+currAvg*weightOld;
   return avg;  
 }
 
 
-boolean quakeEvent(int x, int xAverage) {
+boolean quakeEvent(int z, int zAverage) {
   boolean check = false;
-  int8_t delta = abs(x - xAverage);
+  int8_t delta = abs(z - zAverage);
   if (delta >10) {check = true;} 
   return check;
 }
 
 void printResults () {
   //Print the results to the terminal.
-  Serial.print("x Val:");
+  Serial.print(F("x Val:"));
   Serial.print(x, DEC);
-  Serial.print(',');
-  Serial.print("x Avg:");
-  Serial.print(xAverage);
-  Serial.print(',');
-  Serial.print("x Diff:");
-  Serial.print(x-xAverage);
   Serial.print(',');
   Serial.print(eventCheck);
   Serial.print(',');
-  Serial.print("y val:");
+  Serial.print(F("y val:"));
   Serial.print(y, DEC);
   Serial.print(',');
-  Serial.print("z val:");
-  Serial.println(z, DEC);
+  Serial.print(F("z val:"));
+  Serial.print(z, DEC);
+  Serial.print(',');
+  Serial.print(F("z Avg:"));
+  Serial.print(zAverage,DEC);
+  Serial.print(',');
+  Serial.print(F("z Diff:"));
+  Serial.println(z-zAverage,DEC);
 }  
 
 //This function will write a value to a register on the ADXL345.
 //Parameters:
-//  char registerAddress - The register to write a value to
-//  char value - The value to be written to the specified register.
 void writeRegister(char registerAddress, char value){
   //Set Chip Select pin low to signal the beginning of an SPI packet.
   digitalWrite(CS, LOW);
