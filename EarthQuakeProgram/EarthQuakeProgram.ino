@@ -43,10 +43,7 @@ int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush a
 int8_t calibCount=1; // # times called calibrate fxn
 int8_t writeCount=0; // # times writing to EEPROM
 
-// x values
-int xReadings[numReadings];      
-int xReadIndex = 0;              
-int xTotal = 0;                  
+//average x used to determine if event occurred
 int xAverage = 0;
 
 //event check
@@ -88,8 +85,8 @@ void setup(){
   initGPRS();
 
 //initialize x reading values to zero
-for (int thisReading = 0; thisReading < numReadings; thisReading++)
-   xReadings[thisReading] = 0;
+//for (int thisReading = 0; thisReading < numReadings; thisReading++)
+//   xReadings[thisReading] = 0;
     
   //Initiate an SPI communication instance.
   SPI.begin();
@@ -123,14 +120,13 @@ void loop(){
                                                Serial.println(x-xPrior);
                                                delay(10000);}
           else {      
-                  calcRollingAve(getReading()); //calc rolling average from reading
+                  xAverage=calcAvgAccel (getReading(),calibCount,xAverage);
                   calibCount = calibCount+1;        
                   Serial.print(calibCount, DEC); //
                   Serial.print(":X Value:");
                   Serial.println(x, DEC);}
 
         if (calibCount == numReadings) {mode=1;
-                                       xAverage = xTotal / numReadings;   // calculate the average:
                                        calibCount=1; //reset calibration count
                                        Serial.println("Monitoring...");}      
 
@@ -242,15 +238,13 @@ byte getReading () {
   
 }
 
-void calcRollingAve (int x) {
-  xTotal = xTotal - xReadings[xReadIndex];// Rolling avg subtract the last reading:
-  xReadings[xReadIndex] = x; // read from the sensor:  
-  xTotal = xTotal + xReadings[xReadIndex]; // add the reading to the total:
-  xReadIndex = xReadIndex + 1; // advance to the next position in the array:
-  if (xReadIndex >= numReadings) {    // if we're at the end of the array wrap around to the beginning:
-    xReadIndex = 0;
-  }
+int calcAvgAccel (int x, int index, int currAvg) {
+  int weightNew = 1/index;
+  int weightOld = (1-weightNew);
+  int avg = x*weightNew+currAvg*weightOld;
+  return avg;  
 }
+
 
 boolean quakeEvent(int x, int xAverage) {
   boolean check = false;
