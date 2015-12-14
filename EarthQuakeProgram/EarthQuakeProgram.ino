@@ -59,6 +59,7 @@ char sendto[21]="4158069938"; //phone number to send SMS
 char message[141]; //SMS message sent to Fona
 String dataMessage; //data info
 byte messageCounter=0;
+char replybuffer[255]; //character buffer used for SMS communications
 
 
 void setup(){ 
@@ -106,7 +107,9 @@ void loop(){
   if (mode==0) {
         if (calibCount == 1) {Serial.println(F("Calibrate ADXL..."));
                               delay(10);  //add small delay for ADXL 
-                              zPrior = getReading();}
+                              zPrior = getReading();
+                              processSMS();
+                              }
 
         if (quakeEvent(getReading(), zPrior)) {Serial.println(F("Not Stable..."));
                                                calibCount=1; //reset calibration
@@ -180,6 +183,49 @@ void loop(){
                                     Serial.println(F("Mem flushed"));}
       delay(50);   
   }
+
+}
+
+void processSMS () {
+
+  // read the number of SMS's!
+        int8_t smsnum = fona.getNumSMS(); //smsnum is the # of sms on sim card
+        Serial.print(F("SMS's in queue: "));
+        Serial.print(smsnum);
+
+  for (int smsMessage = 1; smsMessage <=smsnum; smsMessage++) {
+
+        // Retrieve SMS sender address/phone number.
+        if (! fona.getSMSSender(smsMessage, replybuffer, 250)) {
+          Serial.println("Failed!");
+        }
+
+        Serial.print(F("FROM: ")); 
+        Serial.println(replybuffer);
+
+        // Retrieve SMS value.
+        uint16_t smslen;
+        if (! fona.readSMS(smsMessage, replybuffer, 250, &smslen)) { // pass in buffer and max len!
+          Serial.println("Failed!");
+        }
+
+        Serial.print(F("***** SMS #")); Serial.print(smsMessage);
+        Serial.print(" ("); Serial.print(smslen); Serial.println(F(") bytes *****"));
+        Serial.println(replybuffer);
+        Serial.println(F("*****"));
+
+  }
+}
+
+void deleteSMS() {
+  // delete an SMS
+        uint8_t smsn; //smsn to be deleted
+
+        if (fona.deleteSMS(smsn)) {
+          Serial.println(F("OK!"));
+        } else {
+          Serial.println(F("Couldn't delete"));
+        }
 
 }
 
