@@ -35,7 +35,7 @@ char values[10]; //This buffer will hold values read from the ADXL345 registers.
 
 int x,y,z; //These variables will be used to hold the x,y and z axis accelerometer values.
 int zPrior; //prior value of x used for callibration
-const int numReadings = 50; //Number of readings for average
+const int numReadings = 20; //Number of readings for average
 const int numResults = 50; //Number of readings to write out
 int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush and send buffer
 
@@ -105,6 +105,7 @@ void loop(){
   
   if (mode==0) {
         if (calibCount == 1) {Serial.println(F("Calibrate ADXL..."));
+                              delay(10);  //add small delay for ADXL 
                               zPrior = getReading();}
 
         if (quakeEvent(getReading(), zPrior)) {Serial.println(F("Not Stable..."));
@@ -210,7 +211,7 @@ void sendSMS (String thisMessage) {
         }
 }
 
-byte getReading () {
+int getReading () {
   //Reading 6 bytes of data starting at register DATAX0 will retrieve the x,y and z acceleration values from the ADXL345.
   //The results of the read operation will get stored to the values[] buffer.
   readRegister(DATAX0, 6, values);
@@ -231,9 +232,9 @@ byte getReading () {
   return z;  
 }
 
-int calcAvgAccel (int z, int index, int currAvg) {
-  int weightNew = 1/index;
-  int weightOld = (1-weightNew);
+int calcAvgAccel (int z, float index, int currAvg) {
+  float weightNew = 1/index;
+  float weightOld = (1-weightNew);
   int avg = z*weightNew+currAvg*weightOld;
   return avg;  
 }
