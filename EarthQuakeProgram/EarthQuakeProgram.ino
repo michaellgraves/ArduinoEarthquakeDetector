@@ -103,9 +103,14 @@ void setup(){
   //Put the ADXL345 into Measurement Mode by writing 0x08 to the POWER_CTL register.
   writeRegister(POWER_CTL, 0x08);  //Measurement mode  
 
-  setNumResults(10);
+  setNumResults(20); //intial # results to capture
+  disableSMSSend (); //by default SMS messages are enabled
+  
   Serial.println("getNumResults: ");
   Serial.println(getNumResults());
+
+  Serial.println("getSMSSend: ");
+  Serial.println(getSMSSend());
   
 
 }
@@ -118,7 +123,7 @@ void loop(){
   else if (mode ==1) {
     monitorEvent(monitorDelay);
     
-    //every 100 iterations of monitoring, check to see if there are any sms configurations messages
+    //drives frequency of SMS processing
     if (monitorCount <25) {monitorCount=monitorCount+1; } else {processSMS();
                                                                 monitorCount=0;}
       }
@@ -160,7 +165,7 @@ void monitorEvent(int mdelay) {
                               String SMSMessage="Event detected @ "; //SMS message constructed by program
                               SMSMessage= SMSMessage + getTime();
                               Serial.println(SMSMessage);                             
-                              //sendSMS(SMSMessage);
+                              if (getSMSSend()==1) {sendSMS(SMSMessage,sendto);}
                                   }
       delay(mdelay);
 }
@@ -189,36 +194,36 @@ void writeEventLog(int count, int start) {
 
 void sendEventLog (int count) {
 
-       Serial.println(F("Transmitting"));                    
-
+       Serial.println(F("Transmitting"));                   
        int address=startAddress;
        String dataMessage; //message to be sent
        int messageCounter=0; //counter used to break down messages into 140 byte chunks
-       int valueInt; //value read which is appended to message
+       char valueInt; //value read which is appended to message
        
        for (int readCount = 0; readCount<count; readCount++) {
-
-        valueInt = EEPROM.read(address); // read a byte from the current address
+       Serial.print("valueInt ");
+       valueInt=EEPROM.read(address);
+       Serial.println(valueInt);
+        replybuffer[messageCounter] = valueInt;
+        messageCounter++;
+        replybuffer[messageCounter] = ',';
+        messageCounter++;
         
-        //break message into chunks
-        if (messageCounter <28) {dataMessage = dataMessage + valueInt + ",";
-                                 messageCounter = messageCounter+1;
-                                 } 
-                               else { 
-                                     Serial.print(F("Sending partial message"));
-                                      //sendSMS(dataMessage); //send data in 140 character chunks           
-                                      messageCounter = 0;
-                                      dataMessage = "";
-                               }
-        Serial.print(F("# Records read: "));
-        Serial.println(readCount+1);
-        address = address + 1;  // advance to the next address
-        if (address == 512) {break;} // Stop reading if address is out of bounds of EEPROM
+        if (messageCounter>50) {
+                                if (getSMSSend()==1) {sendSMS(replybuffer,sendto);} //send data in 140 byte chunks
+                                Serial.print("replybuffer: ");
+                                Serial.println(replybuffer[0]);
+                                messageCounter=0;
+                                memset(replybuffer, 0, sizeof(replybuffer));;
 
+        }
         
+                address = address + 1;  // advance to the next address
        }
-                                    Serial.println(F("Sending remainder message"));
-                                    //sendSMS(dataMessage); //send remainder of data 
+                                Serial.print("replybuffer: ");
+                                Serial.println(replybuffer[0]);
+
+                               if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
                                     mode=0;
 }
 
@@ -252,7 +257,7 @@ void processSMS () {
         // Retrieve SMS value.
         uint16_t smslen;
         if (! fona.readSMS(smsMessage, replybuffer, 250, &smslen)) { // pass in buffer and max len!
-          Serial.println("Failed!");
+          Serial.println(F("Failed!"));
         }
 
         //control type  
@@ -269,8 +274,8 @@ void processSMS () {
         controlValue= replybuffer[4];
         
         if (!setControl(controlType,controlValue)) {
-          sendSMS ("Stop sending me stupid commands!",sendto);
-        } else {sendSMS ("Okay fine I did it!",sendto); }
+          sendSMS ("Stupid commands!",sendto);
+        } else {sendSMS ("Okay fine!",sendto); }
         deleteSMS(smsMessage);
   } //close for loop
 }
@@ -284,6 +289,14 @@ boolean setControl (char controlT[2], char controlV) {
     } else if 
      (strcmp(controlT, "Res")  == 0) { // test to see if the two strings are equal
         writeEventLog(getNumResults(),startAddress); //write out event log and send
+        match=true;
+    } else if 
+     (strcmp(controlT, "SMS")  == 0) { // test to see if the two strings are equal
+        enableSMSSend(); //write out event log and send
+        match=true;
+    } else if 
+     (strcmp(controlT, "NMS")  == 0) { // test to see if the two strings are equal
+        disableSMSSend(); //write out event log and send
         match=true;
     } else {match=false;}
 
@@ -299,11 +312,21 @@ int8_t getNumResults () {
     return numResultInt8_t;
 }
 
+void enableSMSSend () {
+  EEPROM.write(1, 1);
+}
+
+void disableSMSSend () {
+  EEPROM.write(1, 2);
+}
+
+int8_t getSMSSend () {
+    int8_t getSMSSendInt8_t = EEPROM.read(1); // read a byte from the current address
+    return getSMSSendInt8_t;
+}
+
 
 void deleteSMS(int smsn) {
-  // delete an SMS
-  //      uint8_t smsn; //smsn to be deleted
-
         if (fona.deleteSMS(smsn)) {
           Serial.println(F("OK!"));
         } else {
@@ -340,7 +363,7 @@ void sendSMS (String thisMessage,char recipient[21]) {
         }
 }
 
-int getReading () {
+int8_t getReading () {
   //Reading 6 bytes of data starting at register DATAX0 will retrieve the x,y and z acceleration values from the ADXL345.
   //The results of the read operation will get stored to the values[] buffer.
   readRegister(DATAX0, 6, values);
