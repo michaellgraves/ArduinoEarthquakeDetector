@@ -5,7 +5,7 @@
 //Fona set-ups
 //Fona libraries located here - C:\Program Files (x86)\Arduino\libraries\Adafruit_FONA
 #include <SoftwareSerial.h>
-#include <Adafruit_FONA.h>
+#include <Adafruit_FONA.h>Gtm
 #define FONA_RX 2
 #define FONA_TX 3
 #define FONA_RST 4
@@ -62,13 +62,12 @@ char sendto[21]="4158069938"; //phone number to send SMS
 char message[141]; //SMS message sent to Fona
 char replybuffer[255]; //character buffer used for SMS communications
 
-
 void setup(){ 
  //Create a serial connection to display the data on the terminal.
   Serial.begin(9600);
 
 //Initialize FONA
-  Serial.println("Fona start-up...");
+  Serial.println("Start-up...");
   fonaSerial->begin(4800);
   if (! fona.begin(*fonaSerial)) {
     Serial.println(F("Couldn't find FONA"));
@@ -103,16 +102,9 @@ void setup(){
   //Put the ADXL345 into Measurement Mode by writing 0x08 to the POWER_CTL register.
   writeRegister(POWER_CTL, 0x08);  //Measurement mode  
 
-  setNumResults(20); //intial # results to capture
-  disableSMSSend (); //by default SMS messages are enabled
+  setNumResults(50); //intial # results to capture
+  enableSMSSend (); //by default SMS messages are enabled
   
-  Serial.println("getNumResults: ");
-  Serial.println(getNumResults());
-
-  Serial.println("getSMSSend: ");
-  Serial.println(getSMSSend());
-  
-
 }
 
 void loop(){
@@ -128,14 +120,11 @@ void loop(){
                                                                 monitorCount=0;}
       }
   else if (mode ==2) {
-      Serial.println("getNumResults: ");
-      Serial.println(getNumResults());
-    writeEventLog(getNumResults(),startAddress); //write out event log and send
+      writeEventLog(getNumResults(),startAddress); //write out event log and send
   }
 }
 
 void calibrateADXL (int calCount) {
-
         Serial.println(F("Calibrating ADXL..."));
         delay(10);  //add small delay to ADXL reading
         int zPrior = getReading();
@@ -148,22 +137,19 @@ void calibrateADXL (int calCount) {
                                                }
           else {      
                   zAverage=calcAvgAccel (getReading(),count,zAverage);
-                  Serial.print(count+1, DEC); //
-                  Serial.print(":Z Value:");
-                  Serial.println(z, DEC);}
-        delay(100); //short delay for callibration
+                  delay(100); //short delay for callibration
         }
-
+        }
         mode=1;
-        Serial.println(F("Monitoring..."));}      
-
+        Serial.println(F("Monitoring..."));
+}
+  
 void monitorEvent(int mdelay) {
       eventCheck = quakeEvent(getReading(), zAverage); //check if seismic event has occurred
       printResults(); //print to terminal current x,y,z readings
       if (eventCheck == true) {mode= 2;
                               eventCheck=false;
-                              String SMSMessage="Event detected @ "; //SMS message constructed by program
-                              SMSMessage= SMSMessage + getTime();
+                              String SMSMessage="Event detected: " + getTime(); //SMS message constructed by program
                               Serial.println(SMSMessage);                             
                               if (getSMSSend()==1) {sendSMS(SMSMessage,sendto);}
                                   }
@@ -180,11 +166,9 @@ void writeEventLog(int count, int start) {
          address = address + 1;  // advance to the next address
          if (address == 512) {break;} // Stop writing if address is out of bounds of EEPROM
        
-         Serial.print(writeCount+1, DEC);
-         Serial.print(":z=");
          Serial.println(z, DEC);
          
-         delay(250);
+         delay(50);
        }
        
        Serial.println(F("Finished Writing"));
@@ -194,37 +178,42 @@ void writeEventLog(int count, int start) {
 
 void sendEventLog (int count) {
 
-       Serial.println(F("Transmitting"));                   
-       int address=startAddress;
-       String dataMessage; //message to be sent
-       int messageCounter=0; //counter used to break down messages into 140 byte chunks
-       char valueInt; //value read which is appended to message
-       
+          Serial.println(F("Transmitting")); 
+          int messageCounter=0; //counter used to break down messages into 140 byte chunks
+          String value;
+          char cValue[4]; //signed three digit character array
+          int address=startAddress;
+          int8_t valueInt; //value read which is appended to message, supports range of -128 to 127
+          memset(replybuffer, 0, 255);
+         
+         
        for (int readCount = 0; readCount<count; readCount++) {
-       Serial.print("valueInt ");
-       valueInt=EEPROM.read(address);
-       Serial.println(valueInt);
-        replybuffer[messageCounter] = valueInt;
-        messageCounter++;
-        replybuffer[messageCounter] = ',';
-        messageCounter++;
-        
-        if (messageCounter>50) {
-                                if (getSMSSend()==1) {sendSMS(replybuffer,sendto);} //send data in 140 byte chunks
-                                Serial.print("replybuffer: ");
-                                Serial.println(replybuffer[0]);
-                                messageCounter=0;
-                                memset(replybuffer, 0, sizeof(replybuffer));;
 
+          valueInt = EEPROM.read(address); //get ADXL value
+          value = String(valueInt,DEC);//convert int to string, length of 3 to 4 characters
+          value.toCharArray(cValue,4); //copy value to CValue
+
+          int i=0;
+          while(i<value.length())
+            {
+            replybuffer[messageCounter+i]    = cValue[i];
+            ++i;
+            }
+
+            replybuffer[ messageCounter + value.length()] = ',';  //add comma to seperate ADXL values
+            messageCounter=messageCounter+value.length()+1;       //increment message counter by messageCounter+ lenght()
+
+        if (messageCounter>140) {
+
+          if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
+              memset(replybuffer, 0, sizeof(replybuffer));       
+              messageCounter=0;                                
         }
         
-                address = address + 1;  // advance to the next address
+              address = address + 1;  // advance to the next address
        }
-                                Serial.print("replybuffer: ");
-                                Serial.println(replybuffer[0]);
-
-                               if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
-                                    mode=0;
+              if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
+              mode=0;
 }
 
 void processSMS () {
@@ -234,7 +223,7 @@ void processSMS () {
           int8_t smsnum = fona.getNumSMS();
 
         if (smsnum < 0) {
-          Serial.println(F("Could not read # SMS"));
+          Serial.println(F("No SMS's"));
         } else {
           Serial.print(smsnum);
           Serial.println(F(" SMS's on SIM card!"));
@@ -275,7 +264,7 @@ void processSMS () {
         
         if (!setControl(controlType,controlValue)) {
           sendSMS ("Stupid commands!",sendto);
-        } else {sendSMS ("Okay fine!",sendto); }
+        } 
         deleteSMS(smsMessage);
   } //close for loop
 }
@@ -284,22 +273,35 @@ boolean setControl (char controlT[2], char controlV) {
   boolean match;
 
   if (strcmp(controlT, "Nmr")  == 0) { // test to see if the two strings are equal
-        setNumResults(controlV); 
+        setNumResults(controlV); //write ASCII value for # records
+        sendSMS ("Updating",sendto);
         match=true;
     } else if 
      (strcmp(controlT, "Res")  == 0) { // test to see if the two strings are equal
+        enableSMSSend();// set to SMS send mode
+        sendSMS ("Collecting",sendto);
         writeEventLog(getNumResults(),startAddress); //write out event log and send
         match=true;
     } else if 
      (strcmp(controlT, "SMS")  == 0) { // test to see if the two strings are equal
         enableSMSSend(); //write out event log and send
+        sendSMS ("SMS enabled...",sendto); 
         match=true;
     } else if 
      (strcmp(controlT, "NMS")  == 0) { // test to see if the two strings are equal
         disableSMSSend(); //write out event log and send
+        sendSMS ("SMS disabled",sendto); 
         match=true;
-    } else {match=false;}
-
+    } else if 
+     (strcmp(controlT, "Rss")  == 0) { // test to see if the two strings are equal
+        sendSMS (getRSSI(),sendto); 
+        match=true;
+    } else if 
+     (strcmp(controlT, "Gtm")  == 0) { // test to see if the two strings are equal
+        sendSMS (getTime(),sendto); 
+        match=true;
+    }
+  else {match=false;}
  return match;
 } 
 
@@ -344,6 +346,21 @@ void initGPRS () {
           Serial.println(F("Failed to enable"));
 }
 
+String getRSSI () {
+        // read the RSSI
+        uint8_t n = fona.getRSSI();
+        int8_t r;
+        String msg = "Signal: ";
+        if (n == 0) r = -115;
+        if (n == 1) r = -111;
+        if (n == 31) r = -52;
+        if ((n >= 2) && (n <= 30)) {
+          r = map(n, 2, 30, -110, -54);
+        }
+        msg = msg + r;
+        return msg;
+}
+
 String getTime () {
         // read the time
         char buffer[23];
@@ -358,7 +375,7 @@ String getTime () {
 void sendSMS (String thisMessage,char recipient[21]) {
       Serial.println(F("Send SMS"));
       thisMessage.toCharArray(message, 141);   
-       if (!fona.sendSMS(recipient, message)) {Serial.println(F("Failed"));} 
+       if (!fona.sendSMS(recipient, message)) {Serial.println(F("Failed to send SMS"));} 
        else {Serial.println(F("Sent!"));
         }
 }
