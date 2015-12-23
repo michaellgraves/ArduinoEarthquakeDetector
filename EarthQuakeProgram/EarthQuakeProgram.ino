@@ -10,7 +10,6 @@
 #define FONA_TX 3
 #define FONA_RST 4
 #ifdef __AVR__
-#include <SoftwareSerial.h>
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
 SoftwareSerial *fonaSerial = &fonaSS;
 #else
@@ -78,13 +77,15 @@ void setup(){
     while (1);
   }
   type = fona.type();
-  Serial.println(F("FONA is OK"));
+  strcpy(replybuffer,"FONA is OK");
+  sendSMS(replybuffer,sendto);
   Serial.print(F("Found "));
   // Print SIM card IMEI number.
   char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
   uint8_t imeiLen = fona.getIMEI(imei);
   if (imeiLen > 0) {
-    Serial.print(F("SIM card IMEI: ")); Serial.println(imei);
+    Serial.print(F("SIM card IMEI: ")); 
+    Serial.println(imei);
   }
 
   //initialize GPRS, required to get network time
@@ -122,7 +123,7 @@ void loop(){
     monitorEvent(monitorDelay);
     
     //drives frequency of SMS processing
-    if (monitorCount <25) {monitorCount=monitorCount+1; } else {processSMS();
+    if (monitorCount <250) {monitorCount=monitorCount+1; } else {processSMS();
                                                                 monitorCount=0;}
       }
   else if (mode ==2) {
@@ -334,7 +335,7 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
     }
     else if 
      (strcmp(controlT, "Rst")  == 0) {  
-        strcpy(replybuffer,"Restarting sketch");
+        strcpy(replybuffer,"Restarting Fona");
         sendSMS (replybuffer,sendto); 
         deleteSMS(smsMessage); //remove the SMS message from queue
         delay(50);
@@ -429,11 +430,11 @@ void deleteSMS(int smsn) {
 
 void initGPRS () {
         // turn GPRS on
-        if (!fona.enableGPRS(true)) {Serial.println(F("Failed to turn on"));
-                                      addError ();
-                                    }
+//        if (!fona.enableGPRS(true)) {Serial.println(F("Failed to turn on GPRS"));
+//                                      addError ();
+//                                    }
         // enable NTP time sync
-        if (!fona.enableNTPTimeSync(true, F("pool.ntp.org"))){Serial.println(F("Failed to enable"));
+        if (!fona.enableNTPTimeSync(true, F("pool.ntp.org"))){Serial.println(F("Failed to enable NTP time sync"));
                                                               addError ();
                                                               }
           
