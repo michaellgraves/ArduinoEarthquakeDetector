@@ -59,7 +59,6 @@ int startAddress = 99; // start address for earthquake data, provides 100 bytes 
 //Fona variables
 uint8_t type; //Fona Type
 char sendto[21]="4158069938"; //phone number to send SMS
-char message[141]; //SMS message sent to Fona
 char replybuffer[255]; //character buffer used for SMS communications
 
 void setup(){ 
@@ -123,7 +122,7 @@ void loop(){
     monitorEvent(monitorDelay);
     
     //drives frequency of SMS processing
-    if (monitorCount <250) {monitorCount=monitorCount+1; } else {processSMS();
+    if (monitorCount <25) {monitorCount=monitorCount+1; } else {processSMS();
                                                                 monitorCount=0;}
       }
   else if (mode ==2) {
@@ -189,9 +188,7 @@ void sendEventLog (int count) {
           char cValue[4]; //signed three digit character array
           int address=startAddress;
           int8_t valueInt; //value read which is appended to message, supports range of -128 to 127
-          memset(replybuffer, 0, 255);
-         
-         
+                  
        for (int readCount = 0; readCount<count; readCount++) {
 
           valueInt = EEPROM.read(address); //get ADXL value
@@ -211,14 +208,12 @@ void sendEventLog (int count) {
         if (messageCounter>140) {
 
           if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
-              memset(replybuffer, 0, sizeof(replybuffer)); // clear reply buffer
               messageCounter=0;                                
         }
         
               address = address + 1;  // advance to the next address
        }
               if (getSMSSend()==1) {sendSMS(replybuffer,sendto);
-                                    memset(replybuffer, 0, 255); //clear reply buffer
                                     }
               mode=0;
 }
@@ -248,13 +243,13 @@ void processSMS () {
         Serial.println(replybuffer);
 
         //phone number
-        char phoneNumber[11];
-        strncpy(phoneNumber, replybuffer, 12);
+        //char phoneNumber[11];
+        //strncpy(phoneNumber, replybuffer, 12);
 
         // Retrieve SMS value.
         uint16_t smslen;
         if (! fona.readSMS(smsMessage, replybuffer, 250, &smslen)) { // pass in buffer and max len!
-          Serial.println(F("Failed!"));
+          Serial.println(F("Failed to read SMS"));
           addError ();
         }
 
@@ -271,6 +266,8 @@ void processSMS () {
         char controlValue;
         controlValue= replybuffer[4];
 
+        deleteSMS(smsMessage); //remove the SMS message from queue
+        
         if (!setControl(controlType,controlValue,smsMessage)) {
 
           strcpy(replybuffer,"Stupid commands!");
@@ -278,7 +275,7 @@ void processSMS () {
 
         }
        
-         deleteSMS(smsMessage); //remove the SMS message from queue
+         
  
 
   } //close for loop
@@ -319,13 +316,14 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
         match=true;
     } else if 
      (strcmp(controlT, "Rss")  == 0) {
-       getRSSI();
+       getRSSI(); //copy signal to reply buffer
        sendSMS (replybuffer,sendto); 
         match=true;
     } else if 
      (strcmp(controlT, "Gtm")  == 0) {  
-        sendSMS (getTime(),sendto); 
-        match=true;
+       getTime(); //copy time to replybuffer
+       sendSMS (replybuffer,sendto); 
+       match=true;
     }
     else if 
      (strcmp(controlT, "Err")  == 0) {  
@@ -430,9 +428,9 @@ void deleteSMS(int smsn) {
 
 void initGPRS () {
         // turn GPRS on
-//        if (!fona.enableGPRS(true)) {Serial.println(F("Failed to turn on GPRS"));
-//                                      addError ();
-//                                    }
+        if (!fona.enableGPRS(true)) {Serial.println(F("Failed to turn on GPRS"));
+                                      addError ();
+                                    }
         // enable NTP time sync
         if (!fona.enableNTPTimeSync(true, F("pool.ntp.org"))){Serial.println(F("Failed to enable NTP time sync"));
                                                               addError ();
@@ -472,26 +470,29 @@ void setCharMessage (int8_t r) {
   
 }
 
-String getTime () {
-        // read the time
+void getTime () {
         char buffer[23];
         fona.getTime(buffer, 23);  // make sure replybuffer is at least 23 bytes!
-        String time = String(buffer);
-        time.remove(0, 10); //remove date
-        time.remove(8);    // remove trailing #'s
-        Serial.println(time);
-        return time;
+        replybuffer[0]=buffer[10];
+        replybuffer[1]=buffer[11];
+        replybuffer[2]=buffer[12];
+        replybuffer[3]=buffer[13];
+        replybuffer[4]=buffer[14];
+        replybuffer[5]=buffer[15];
+        replybuffer[6]=buffer[16];
+        replybuffer[7]=buffer[17];
+        replybuffer[8]='\0';
 }
 
 void sendSMS (String thisMessage,char recipient[21]) {
       Serial.println(F("Send SMS"));
-//      thisMessage.toCharArray(message, 141);
 
        if (!fona.sendSMS(recipient, replybuffer)) {Serial.println(F("Failed to send SMS"));
                                                    fona.sendSMS(recipient, replybuffer); //retry
                                                    addError ();
                                                    } 
        else {Serial.println(F("Sent!"));
+             memset(replybuffer, 0, 255);
         }
 }
 
