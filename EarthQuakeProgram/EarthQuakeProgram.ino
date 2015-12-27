@@ -77,7 +77,7 @@ void setup(){
   }
   type = fona.type();
   strcpy(replybuffer,"FONA is OK");
-  sendSMS(replybuffer,sendto);
+  sendSMS(sendto);
   Serial.print(F("Found "));
   // Print SIM card IMEI number.
   char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
@@ -156,7 +156,7 @@ void monitorEvent(int mdelay) {
       if (eventCheck == true) {mode= 2;
                               eventCheck=false;
                               strcpy(replybuffer,"Event detected");
-                              if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
+                              if (getSMSSend()==1) {sendSMS(sendto);}
                                   }
       delay(mdelay);
 }
@@ -207,13 +207,13 @@ void sendEventLog (int count) {
 
         if (messageCounter>140) {
 
-          if (getSMSSend()==1) {sendSMS(replybuffer,sendto);}
+          if (getSMSSend()==1) {sendSMS(sendto);}
               messageCounter=0;                                
         }
         
               address = address + 1;  // advance to the next address
        }
-              if (getSMSSend()==1) {sendSMS(replybuffer,sendto);
+              if (getSMSSend()==1) {sendSMS(sendto);
                                     }
               mode=0;
 }
@@ -271,7 +271,7 @@ void processSMS () {
         if (!setControl(controlType,controlValue,smsMessage)) {
 
           strcpy(replybuffer,"Stupid commands!");
-          sendSMS (replybuffer,sendto);
+          sendSMS (sendto);
 
         }
        
@@ -287,54 +287,54 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
   if (strcmp(controlT, "Nmr")  == 0) {  
         setNumResults(controlV); //write ASCII value for # records
         strcpy(replybuffer,"Updating Results");
-        sendSMS (replybuffer,sendto);
+        sendSMS (sendto);
         match=true;
     } else if 
      (strcmp(controlT, "Sdl")  == 0) {  
         setWriteDelay(controlV); //write ASCII value for # records
         strcpy(replybuffer,"Setting Write Delay");
-        sendSMS (replybuffer,sendto);
+        sendSMS (sendto);
         match=true;
     } else if 
      (strcmp(controlT, "Res")  == 0) {  
         enableSMSSend();// set to SMS send mode
         strcpy(replybuffer,"Collecting");
-        sendSMS (replybuffer,sendto);
+        sendSMS (sendto);
         writeEventLog(getNumResults(),startAddress); //write out event log and send
         match=true;
     } else if 
      (strcmp(controlT, "SMS")  == 0) {  
         enableSMSSend(); //write out event log and send
         strcpy(replybuffer,"SMS enabled...");
-        sendSMS (replybuffer,sendto); 
+        sendSMS (sendto); 
         match=true;
     } else if 
      (strcmp(controlT, "NMS")  == 0) {  
         disableSMSSend(); //write out event log and send
         strcpy(replybuffer,"SMS disabled");
-        sendSMS (replybuffer,sendto); 
+        sendSMS (sendto); 
         match=true;
     } else if 
      (strcmp(controlT, "Rss")  == 0) {
        getRSSI(); //copy signal to reply buffer
-       sendSMS (replybuffer,sendto); 
-        match=true;
+       sendSMS (sendto); 
+       match=true;
     } else if 
      (strcmp(controlT, "Gtm")  == 0) {  
        getTime(); //copy time to replybuffer
-       sendSMS (replybuffer,sendto); 
+       sendSMS (sendto); 
        match=true;
     }
     else if 
      (strcmp(controlT, "Err")  == 0) {  
        getError();
-       sendSMS(replybuffer,sendto); 
+       sendSMS (sendto); 
        match=true;
     }
     else if 
      (strcmp(controlT, "Rst")  == 0) {  
         strcpy(replybuffer,"Restarting Fona");
-        sendSMS (replybuffer,sendto); 
+        sendSMS (sendto); 
         deleteSMS(smsMessage); //remove the SMS message from queue
         delay(50);
         softReset(); 
@@ -484,7 +484,7 @@ void getTime () {
         replybuffer[8]='\0';
 }
 
-void sendSMS (String thisMessage,char recipient[21]) {
+void sendSMS (char recipient[21]) {
       Serial.println(F("Send SMS"));
 
        if (!fona.sendSMS(recipient, replybuffer)) {Serial.println(F("Failed to send SMS"));
