@@ -5,7 +5,7 @@
 //Fona set-ups
 //Fona libraries located here - C:\Program Files (x86)\Arduino\libraries\Adafruit_FONA
 #include <SoftwareSerial.h>
-#include <Adafruit_FONA.h>Gtm
+#include <Adafruit_FONA.h>
 #define FONA_RX 2
 #define FONA_TX 3
 #define FONA_RST 4
@@ -43,15 +43,11 @@ int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush a
 //# times each mode should execute
 int monitorDelay=500;
 int writeDelay=100;
-
 int monitorCount=0; //used to determine when to call processSMS()
+int quakeDelta=10; //used to determine when to call processSMS()
 
 //average z used to determine if event occurred
 int zAverage = 0;
-
-//event check
-boolean eventCheck = false;
-
 //EEPROM Config
 int address;
 int startAddress = 99; // start address for earthquake data, provides 100 bytes of configuration data
@@ -68,7 +64,7 @@ void setup(){
   resetError(); //resetting error counter
   
 //Initialize FONA
-  Serial.println("Start-up...");
+  Serial.println(F("Start-up..."));
   fonaSerial->begin(4800);
   if (! fona.begin(*fonaSerial)) {
     Serial.println(F("Couldn't find FONA"));
@@ -78,7 +74,6 @@ void setup(){
   type = fona.type();
   strcpy(replybuffer,"FONA is OK");
   sendSMS(sendto);
-  Serial.print(F("Found "));
   // Print SIM card IMEI number.
   char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
   uint8_t imeiLen = fona.getIMEI(imei);
@@ -89,28 +84,21 @@ void setup(){
 
   //initialize GPRS, required to get network time
   initGPRS();
-
   //Initiate an SPI communication instance.
   SPI.begin();
   //Configure the SPI connection for the ADXL345.
-  SPI.setDataMode(SPI_MODE3);
-  
+  SPI.setDataMode(SPI_MODE3);  
   //Set up the Chip Select pin to be an output from the Arduino.
   pinMode(CS, OUTPUT);
   //Before communication starts, the Chip Select pin needs to be set high.
-  digitalWrite(CS, HIGH);
-  
+  digitalWrite(CS, HIGH);  
   //Put the ADXL345 into +/- 2G range by writing the value 0x01 to the DATA_FORMAT register.
-  writeRegister(DATA_FORMAT, 0x00);
-  
+  writeRegister(DATA_FORMAT, 0x00);  
   //Put the ADXL345 into Measurement Mode by writing 0x08 to the POWER_CTL register.
   writeRegister(POWER_CTL, 0x08);  //Measurement mode  
-
   setNumResults(20); //intial # results to capture
   enableSMSSend (); //by default SMS messages are enabled
- 
   deleteSMS(); //clean-up any SMS's on SIM card
-  
 }
 
 void loop(){
@@ -131,33 +119,32 @@ void loop(){
 }
 
 void calibrateADXL (int calCount) {
-        Serial.println(F("Calibrating ADXL..."));
+        Serial.println(F("Calibrating"));
         delay(10);  //add small delay to ADXL reading
         int zPrior = getReading();
         zAverage=0; //reset zAverage
 
-        for (int count = 0; count<calCount; count++) {
-         
-        if (quakeEvent(getReading(), zPrior)) {Serial.println(F("Not Stable..."));
-                                               break; //stop calibration process
-                                               }
-          else {      
-                  zAverage=calcAvgAccel (getReading(),count,zAverage);
-                  delay(100); //short delay for callibration
-        }
+        for (int count = 0; count<calCount; count++) {      
+          zAverage=calcAvgAccel (getReading(),count,zAverage);
+          delay(100); //short delay for callibration
         }
         mode=1;
-        Serial.println(F("Monitoring..."));
+        Serial.println(F("Monitoring"));
 }
   
 void monitorEvent(int mdelay) {
-      eventCheck = quakeEvent(getReading(), zAverage); //check if seismic event has occurred
-      printResults(); //print to terminal current x,y,z readings
-      if (eventCheck == true) {mode= 2;
-                              eventCheck=false;
+      int8_t delta = getReading() - zAverage;
+      delta = abs(delta); //cannot do math calcs in abs() 
+      printResults(); //print to terminal current x,y,z readings                                  
+
+      if (delta > quakeDelta)  {mode= 2;
+                       if (getSMSSend()==1) {
                               strcpy(replybuffer,"Event detected");
-                              if (getSMSSend()==1) {sendSMS(sendto);}
-                                  }
+                              sendSMS(sendto);
+                              setCharMessage(delta);
+                              sendSMS(sendto);
+                                                 }
+                                  }      
       delay(mdelay);
 }
 
@@ -169,8 +156,7 @@ void writeEventLog(int count, int start) {
        for (int writeCount = 0; writeCount<count; writeCount++) {
          EEPROM.write(address, getReading()); //write to current address
          address = address + 1;  // advance to the next address
-         if (address == 512) {break;} // Stop writing if address is out of bounds of EEPROM
-       
+         if (address == 512) {break;} // Stop writing if address is out of bounds of EEPROM      
          Serial.println(z, DEC);         
          delay(writeDelay);
        }
@@ -181,7 +167,6 @@ void writeEventLog(int count, int start) {
 }
 
 void sendEventLog (int count) {
-
           Serial.println(F("Transmitting")); 
           int messageCounter=0; //counter used to break down messages into 140 byte chunks
           String value;
@@ -235,16 +220,12 @@ void processSMS () {
 
         // Retrieve SMS sender address/phone number.
         if (! fona.getSMSSender(smsMessage, replybuffer, 250)) {
-          Serial.println("Failed!");
+          Serial.println(F("Failed!"));
           addError ();
         }
 
         Serial.print(F("FROM: ")); 
         Serial.println(replybuffer);
-
-        //phone number
-        //char phoneNumber[11];
-        //strncpy(phoneNumber, replybuffer, 12);
 
         // Retrieve SMS value.
         uint16_t smslen;
@@ -274,10 +255,6 @@ void processSMS () {
           sendSMS (sendto);
 
         }
-       
-         
- 
-
   } //close for loop
 }
 
@@ -296,6 +273,12 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
         sendSMS (sendto);
         match=true;
     } else if 
+     (strcmp(controlT, "Qde")  == 0) {  
+        setQuakeDelta(controlV); //write ASCII value for quake delay
+        strcpy(replybuffer,"Setting Quake Delta");
+        sendSMS (sendto);
+        match=true;
+    }   else if 
      (strcmp(controlT, "Res")  == 0) {  
         enableSMSSend();// set to SMS send mode
         strcpy(replybuffer,"Collecting");
@@ -358,6 +341,11 @@ void setWriteDelay (char controlV) {
   writeDelay=cV; 
 }
 
+void setQuakeDelta (char controlV) {
+  int cV = (int)controlV;
+  cV = cV/3;
+  quakeDelta=cV; 
+}
 
 int8_t getNumResults () {
     int8_t numResultInt8_t = EEPROM.read(0); // read a byte from the current address
@@ -375,16 +363,15 @@ void disableSMSSend () {
 void getError () {
     int8_t numResultInt8_t = EEPROM.read(3); // read a byte from the current address
     setCharMessage(numResultInt8_t);
-    Serial.println("Get Error");    
-    Serial.println(numResultInt8_t);    
-    
+    Serial.println(F("Get Error"));    
+    Serial.println(numResultInt8_t);       
 }
 
 void addError () {
     int8_t numResultInt8_t = EEPROM.read(3); // read a byte from the current address
     ++numResultInt8_t;
     EEPROM.write(3,numResultInt8_t); // write new value
-    Serial.println("Adding Error");
+    Serial.println(F("Adding Error"));
     Serial.println(numResultInt8_t);
     
 }
@@ -434,8 +421,7 @@ void initGPRS () {
         // enable NTP time sync
         if (!fona.enableNTPTimeSync(true, F("pool.ntp.org"))){Serial.println(F("Failed to enable NTP time sync"));
                                                               addError ();
-                                                              }
-          
+                                                              }        
 }
 
 void getRSSI () {
@@ -455,11 +441,10 @@ void getRSSI () {
 
 void setCharMessage (int8_t r) {
   
-          int messageCounter=0; //counter used to break down messages into 140 byte chunks
+          int messageCounter=0; 
           String value = String(r,DEC);
           char cValue[4];
           value.toCharArray(cValue,4); //copy value to CValue
-          memset(replybuffer, 0, 255);        
 
        int i=0;
           while(i<value.length())
@@ -487,7 +472,7 @@ void getTime () {
 void sendSMS (char recipient[21]) {
       Serial.println(F("Send SMS"));
 
-       if (!fona.sendSMS(recipient, replybuffer)) {Serial.println(F("Failed to send SMS"));
+       if (!fona.sendSMS(recipient, replybuffer)) {Serial.println(F("Failed to send"));
                                                    fona.sendSMS(recipient, replybuffer); //retry
                                                    addError ();
                                                    } 
@@ -524,24 +509,8 @@ int calcAvgAccel (int z, float index, int currAvg) {
   return avg;  
 }
 
-
-boolean quakeEvent(int z, int zAverage) {
-  boolean check = false;
-  int8_t delta = abs(z - zAverage);
-  if (delta >10) {check = true;} 
-  return check;
-}
-
 void printResults () {
   //Print the results to the terminal.
-  Serial.print(F("x Val:"));
-  Serial.print(x, DEC);
-  Serial.print(',');
-  Serial.print(eventCheck);
-  Serial.print(',');
-  Serial.print(F("y val:"));
-  Serial.print(y, DEC);
-  Serial.print(',');
   Serial.print(F("z val:"));
   Serial.print(z, DEC);
   Serial.print(',');
