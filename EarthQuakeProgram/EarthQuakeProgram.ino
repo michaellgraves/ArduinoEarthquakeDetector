@@ -35,16 +35,17 @@ char values[10]; //This buffer will hold values read from the ADXL345 registers.
 int x,y,z; //These variables will be used to hold the x,y and z axis accelerometer values.
 int calibrationCount=12; // # times called calibrate fxn
 
-const int numReadings = 20; //Number of readings for average
-uint8_t numResults; //Number of readings to write out
+uint8_t numResults=100; //Number of readings to write out
 
 int8_t mode = 0; //Operating Mode; 0=calibrate, 1=monitor, 2= collect, 3=flush and send buffer
 
 //# times each mode should execute
 int monitorDelay=500;
-int writeDelay=100;
+int callibrationStartDelay=1000;
+int writeDelay=25;
 int monitorCount=0; //used to determine when to call processSMS()
 int quakeDelta=10; //used to determine when to call processSMS()
+int smsSend=0;  //by default SMS messages are disenabled
 
 //average z used to determine if event occurred
 int zAverage = 0;
@@ -96,26 +97,23 @@ void setup(){
   writeRegister(DATA_FORMAT, 0x00);  
   //Put the ADXL345 into Measurement Mode by writing 0x08 to the POWER_CTL register.
   writeRegister(POWER_CTL, 0x08);  //Measurement mode  
-  setNumResults(20); //intial # results to capture
-  enableSMSSend (); //by default SMS messages are enabled
   deleteSMS(); //clean-up any SMS's on SIM card
 }
 
 void loop(){
   
   if (mode==0) {
+    delay(callibrationStartDelay);
     calibrateADXL(calibrationCount);
   }
-  else if (mode ==1) {
+  else        {
     monitorEvent(monitorDelay);
     
     //drives frequency of SMS processing
-    if (monitorCount <25) {monitorCount=monitorCount+1; } else {processSMS();
+    if (monitorCount <500) {monitorCount=monitorCount+1; } else {processSMS();
                                                                 monitorCount=0;}
       }
-  else if (mode ==2) {
-      writeEventLog(getNumResults(),startAddress); //write out event log and send
-  }
+
 }
 
 void calibrateADXL (int calCount) {
@@ -137,12 +135,14 @@ void monitorEvent(int mdelay) {
       delta = abs(delta); //cannot do math calcs in abs() 
       printResults(); //print to terminal current x,y,z readings                                  
 
-      if (delta > quakeDelta)  {mode= 2;
-                       if (getSMSSend()==1) {
+      if (delta > quakeDelta)  {
+                               writeEventLog(numResults,startAddress); //write out event log
+                           if (smsSend==1) {
                               strcpy(replybuffer,"Event detected");
                               sendSMS(sendto);
                               setCharMessage(delta);
                               sendSMS(sendto);
+                              sendEventLog(numResults); //send event log
                                                  }
                                   }      
       delay(mdelay);
@@ -160,9 +160,7 @@ void writeEventLog(int count, int start) {
          Serial.println(z, DEC);         
          delay(writeDelay);
        }
-       
        Serial.println(F("Finished Writing"));
-       sendEventLog(getNumResults()); //send event log
        mode=0; //re-callibrate ADXL      
 }
 
@@ -192,13 +190,13 @@ void sendEventLog (int count) {
 
         if (messageCounter>140) {
 
-          if (getSMSSend()==1) {sendSMS(sendto);}
+          if (smsSend==1) {sendSMS(sendto);}
               messageCounter=0;                                
         }
         
               address = address + 1;  // advance to the next address
        }
-              if (getSMSSend()==1) {sendSMS(sendto);
+              if (smsSend==1) {sendSMS(sendto);
                                     }
               mode=0;
 }
@@ -269,13 +267,20 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
     } else if 
      (strcmp(controlT, "Sdl")  == 0) {  
         setWriteDelay(controlV); //write ASCII value for # records
-        strcpy(replybuffer,"Setting Write Delay");
+        strcpy(replybuffer,"Write Delay");
         sendSMS (sendto);
         match=true;
     } else if 
      (strcmp(controlT, "Qde")  == 0) {  
         setQuakeDelta(controlV); //write ASCII value for quake delay
-        strcpy(replybuffer,"Setting Quake Delta");
+        strcpy(replybuffer,"Quake Delta");
+        sendSMS (sendto);
+        match=true;
+     }
+        else if 
+     (strcmp(controlT, "Cde")  == 0) {  
+        callibrationDelay(controlV); //write ASCII value for quake delay
+        strcpy(replybuffer,"Calibration Delay");
         sendSMS (sendto);
         match=true;
     }   else if 
@@ -283,12 +288,13 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
         enableSMSSend();// set to SMS send mode
         strcpy(replybuffer,"Collecting");
         sendSMS (sendto);
-        writeEventLog(getNumResults(),startAddress); //write out event log and send
+        writeEventLog(numResults,startAddress); //write out event log and send
+        sendEventLog(numResults); //send event log
         match=true;
     } else if 
      (strcmp(controlT, "SMS")  == 0) {  
         enableSMSSend(); //write out event log and send
-        strcpy(replybuffer,"SMS enabled...");
+        strcpy(replybuffer,"SMS enabled");
         sendSMS (sendto); 
         match=true;
     } else if 
@@ -332,32 +338,35 @@ asm volatile ("  jmp 0");
 }
 
 void setNumResults (char controlV) {
-  EEPROM.write(0, controlV);
+    int cV = (int)controlV;
+    cV = (controlV/33*20) + (controlV-33)*2;
+    numResults=cV; 
 }
 
 void setWriteDelay (char controlV) {
   int cV = (int)controlV;
-  cV = (controlV/33*50) + (controlV-33)*4;
+  cV = (controlV/33*10) + (controlV-33)*2;
   writeDelay=cV; 
 }
 
 void setQuakeDelta (char controlV) {
   int cV = (int)controlV;
-  cV = cV/3;
+  cV = (controlV/33*10) + (controlV-33)*1;
   quakeDelta=cV; 
 }
 
-int8_t getNumResults () {
-    int8_t numResultInt8_t = EEPROM.read(0); // read a byte from the current address
-    return numResultInt8_t;
+void callibrationDelay (char controlV) {
+  int cV = (int)controlV;
+  cV = (controlV/33*1000) + (controlV-33)*13;
+  callibrationStartDelay=cV; 
 }
 
 void enableSMSSend () {
-  EEPROM.write(1, 1);
+  smsSend=1;
 }
 
 void disableSMSSend () {
-  EEPROM.write(1, 2);
+  smsSend=0;
 }
 
 void getError () {
@@ -378,12 +387,6 @@ void addError () {
 
 void resetError () {
     EEPROM.write(3,0); // write new value
-}
-
-
-int8_t getSMSSend () {
-    int8_t getSMSSendInt8_t = EEPROM.read(1); // read a byte from the current address
-    return getSMSSendInt8_t;
 }
 
 void deleteSMS() {
@@ -493,8 +496,9 @@ int8_t getReading () {
   //The Z value is stored in values[4] and values[5].
   z = ((int)values[5]<<8)|(int)values[4];
 
+  z = z * 0.39; //scale to g's 
 
-  //Implement filter to keep ADXL values between int8_t range -128 to 127
+//Implement filter to keep ADXL values between int8_t range -128 to 127
   if (z<-128) 
         {z=-128;} 
       else if (z>127) 
