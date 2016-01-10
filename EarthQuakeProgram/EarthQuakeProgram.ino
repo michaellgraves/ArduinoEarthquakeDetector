@@ -45,7 +45,7 @@ int callibrationStartDelay=1000;
 int writeDelay=25;
 int monitorCount=0; //used to determine when to call processSMS()
 int quakeDelta=10; //used to determine when to call processSMS()
-int smsSend=0;  //by default SMS messages are disenabled
+int smsSend=0;  //by default SMS messages are disabled
 
 //average z used to determine if event occurred
 int zAverage = 0;
@@ -110,7 +110,7 @@ void loop(){
     monitorEvent(monitorDelay);
     
     //drives frequency of SMS processing
-    if (monitorCount <500) {monitorCount=monitorCount+1; } else {processSMS();
+    if (monitorCount <25) {monitorCount=monitorCount+1; } else {processSMS();
                                                                 monitorCount=0;}
       }
 
@@ -220,39 +220,38 @@ void processSMS () {
         if (! fona.getSMSSender(smsMessage, replybuffer, 250)) {
           Serial.println(F("Failed!"));
           addError ();
-        }
+        } else {  
 
-        Serial.print(F("FROM: ")); 
-        Serial.println(replybuffer);
+                Serial.print(F("FROM: ")); 
+                Serial.println(replybuffer);
 
-        // Retrieve SMS value.
-        uint16_t smslen;
-        if (! fona.readSMS(smsMessage, replybuffer, 250, &smslen)) { // pass in buffer and max len!
-          Serial.println(F("Failed to read SMS"));
-          addError ();
-        }
+                // Retrieve SMS value.
+                uint16_t smslen;
+                if (! fona.readSMS(smsMessage, replybuffer, 250, &smslen)) { // pass in buffer and max len!
+                Serial.println(F("Failed to read SMS"));
+                addError ();
+                }
 
-        //control type  
-        char controlType[2];
-        controlType[0]=replybuffer[0];
-        controlType[1]=replybuffer[1];
-        controlType[2]=replybuffer[2];
+                //control type  
+                char controlType[2];
+                controlType[0]=replybuffer[0];
+                controlType[1]=replybuffer[1];
+                controlType[2]=replybuffer[2];
         
-        Serial.print(F("Control Type:")); 
-        Serial.println(controlType);
+                Serial.print(F("Control Type:")); 
+                Serial.println(controlType);
 
-        //control value
-        char controlValue;
-        controlValue= replybuffer[4];
+                //control value
+                char controlValue;
+                controlValue= replybuffer[4];
 
-        deleteSMS(smsMessage); //remove the SMS message from queue
+                deleteSMS(smsMessage); //remove the SMS message from queue
         
-        if (!setControl(controlType,controlValue,smsMessage)) {
-
-          strcpy(replybuffer,"Stupid commands!");
-          sendSMS (sendto);
-
-        }
+                if (!setControl(controlType,controlValue,smsMessage)) {
+                    strcpy(replybuffer,"Stupid commands!");
+                    sendSMS (sendto);
+                    }
+        }//close else clause
   } //close for loop
 }
 
@@ -309,6 +308,12 @@ boolean setControl (char controlT[2], char controlV, int smsMessage) {
        sendSMS (sendto); 
        match=true;
     } else if 
+     (strcmp(controlT, "Bat")  == 0) {
+       getBat(); //copy signal to reply buffer
+       sendSMS (sendto); 
+       match=true;
+    }
+    else if 
      (strcmp(controlT, "Gtm")  == 0) {  
        getTime(); //copy time to replybuffer
        sendSMS (sendto); 
@@ -442,8 +447,37 @@ void getRSSI () {
 
 }
 
-void setCharMessage (int8_t r) {
+void getBat () {
+
+        // read the battery voltage and percentage
+        uint16_t vbat;
+        if (! fona.getBattVoltage(&vbat)) {
+          Serial.println(F("Failed to read Batt"));
+        } else {
+          Serial.print(F("VBat = ")); Serial.print(vbat); Serial.println(F(" mV"));
+          setIntMessage(vbat);
+        }  
   
+}
+
+void setIntMessage (uint16_t r) {
+          memset(replybuffer, 0, 255);
+          int messageCounter=0; 
+          String value = String(r,DEC);
+          char cValue[6];
+          value.toCharArray(cValue,6); //copy value to CValue
+
+       int i=0;
+          while(i<value.length())
+            {
+            replybuffer[messageCounter+i]    = cValue[i];
+            ++i;
+            }
+  
+}
+
+void setCharMessage (int8_t r) {
+          memset(replybuffer, 0, 255);
           int messageCounter=0; 
           String value = String(r,DEC);
           char cValue[4];
